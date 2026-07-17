@@ -1,0 +1,6 @@
+{
+  "name": "next-app-click-depth-fixture",
+  "dependencies": {
+    "next": "^14.0.0"
+  }
+}

@@ -1,0 +1,690 @@
+<!doctype html>
+<!--
+  SIDEKART_LIVE_HTML_VERSION: "2026-07-17"
+  Bump denne (dato) hver gang DENNE filen endres -- brukt av
+  scripts/sidekart-drift-check.mjs til å oppdage om eksterne, vendored
+  kopier (Monterosso) har falt bak. For prosjekter INNI krins-studio-
+  ecosystem er dette irrelevant: generate-sitekart.mjs sin CLI kopierer
+  denne fila fra sin egen kanoniske søsterfil på HVER kjøring, så de kan
+  aldri drifte. For EKSTERNE prosjekter avhenger det av veien:
+  - "Ren vendored kopi" (baatchat/web): egen CLI-wrapper gjør SAMME
+    copyFileSync hver kjøring -- kan heller aldri drifte, markøren her
+    er bare en billig konsistens-sjekk.
+  - "Tungt forket kopi" (cinque-terre): INGEN auto-kopiering -- forken har
+    egne, verdifulle tilpasninger (GHOST_NODES, sykel-reparasjon) som ville
+    blitt overskrevet av en blind copyFileSync. Fiks/funksjoner MÅ porteres
+    manuelt hit, og forken har sin EGEN marker
+    (SIDEKART_LIVE_HTML_LAST_PORTED_FROM_CANONICAL) som drift-check
+    sammenligner mot DENNE datoen -- se 17.07.2026-rettelsen i SKILL.md:
+    en tidligere versjon av SKILL.md påsto feilaktig at "denne halvparten av
+    duplikatet kan ALDRI drifte uansett hvilken vei" -- usant for akkurat
+    denne veien, bevist ved at cinque-terre sin CLI-wrapper (scripts/
+    generate-sitekart.mjs, en tynn wrapper rundt sitekart-core.mjs) IKKE
+    inneholder noen copyFileSync-linje i det hele tatt.
+-->
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sidekart · Live (ekte sider)</title>
+<style>
+  :root{
+    --ink:#2A1810; --muted:rgba(42,24,16,.6); --gold:#C49A34;
+    --line:rgba(0,0,0,.16); --surf:#f6f5f3;
+    --root:#5b8fd6; --ok:#5a9e6f; --orphan:#c97a4a; --stub:#c93a3a; --planned:#6b5b95;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);color:var(--ink);background:#fffefc;padding:34px 26px 80px;min-height:100vh}
+  header{max-width:1100px;margin:0 auto 28px}
+  h1{font-size:22px;font-weight:600;letter-spacing:-.01em}
+  .sub{font-size:13px;color:var(--muted);margin:4px 0 0}
+  .meta-row{display:flex;gap:18px;margin-top:14px;font-size:12px;color:var(--muted)}
+  .meta-row b{color:var(--ink)}
+  .how{margin-top:14px;padding:12px 14px;background:var(--surf);border-radius:8px;font-size:12px;
+    color:var(--muted);line-height:1.5}
+  .how code{font-family:var(--mono);background:#fff;padding:1px 5px;border-radius:4px;border:1px solid var(--line)}
+
+  main{max-width:1100px;margin:0 auto}
+  section{margin-top:30px}
+  section h2{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .count{font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;color:#fff}
+  .count.ok{background:var(--ok)}
+  .count.orphan{background:var(--orphan)}
+
+  /* ---------- TRE-VISNING (ekte kobling, node = liten firkant) ---------- */
+  .tree-wrap{overflow-x:auto;padding:10px 4px 20px}
+  .tree, .tree ul{display:flex;padding-top:26px;position:relative}
+  .tree ul{padding-top:26px}
+  .tree li{display:flex;flex-direction:column;align-items:center;list-style:none;
+    position:relative;padding:0 12px}
+  /* koblingslinjer — klassisk org-chart-mønster: hver li får en strek opp til
+     forelder, søsken kobles med en horisontal strek over dem */
+  .tree li::before{content:"";position:absolute;top:0;left:50%;width:1px;height:26px;
+    background:var(--line)}
+  .tree > li::before{display:none}
+  .tree li:first-child:not(:only-child)::after,
+  .tree li:not(:first-child):not(:last-child)::after{
+    content:"";position:absolute;top:0;height:1px;background:var(--line)}
+  .tree li:first-child:not(:only-child)::after{left:50%;right:0}
+  .tree li:last-child:not(:only-child)::after{content:"";position:absolute;top:0;left:0;
+    width:50%;height:1px;background:var(--line)}
+  .tree li:not(:first-child):not(:last-child)::after{left:0;right:0}
+  .tree > li:only-child::before, .tree > li:only-child::after{display:none}
+
+  /* Ekte side-forhåndsvisning — samme knep som flow.html (bevist der): last
+     siden i en iframe i faktisk størrelse, skaler den visuelt ned. Ikke et
+     skjermbilde (blir aldri utdatert på egen hånd), en LEVENDE mini-side. */
+  :root{--pv-scale:.14; --pv-w:1280px; --pv-h:800px}
+  .node{border:1px solid var(--line);border-radius:10px;background:#fff;font-size:11px;
+    font-weight:600;display:flex;flex-direction:column;overflow:hidden;width:184px;
+    box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .node-head{display:flex;align-items:center;gap:6px;padding:6px 9px}
+  .node .dot{width:7px;height:7px;border-radius:99px;flex:none}
+  .node.root .dot{background:var(--root)}
+  .node.linked .dot{background:var(--ok)}
+  .node.orphaned .dot{background:var(--orphan)}
+  .node .file{display:block;font-family:var(--mono);font-weight:400;font-size:8px;
+    color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .route-link{color:inherit;text-decoration:none;border-bottom:1px dotted var(--muted)}
+  .route-link:hover{color:var(--root);border-bottom-color:var(--root)}
+  .thumb{width:100%;height:calc(var(--pv-w) * var(--pv-scale) * (var(--pv-h) / var(--pv-w)));
+    overflow:hidden;background:var(--surf);border-top:1px solid var(--line);position:relative}
+  .thumb iframe{width:var(--pv-w);height:var(--pv-h);border:0;
+    transform:scale(var(--pv-scale));transform-origin:top left;pointer-events:none}
+  .thumb .no-preview{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;font-size:9px;color:var(--muted);text-align:center;padding:6px;
+    font-weight:400}
+  .node-info{padding:5px 9px;border-top:1px solid var(--line);font-size:9px;font-weight:400;line-height:1.4}
+  .node-info .summary{color:var(--ink);margin-bottom:3px}
+  /* .ai-gap = ETT enkelt gaps[]-element, rendret med egen farge per type --
+     "gap" (default, ingen modifikator-klasse) er en ekte, handlingsbar
+     mangel, farget som en advarsel. "fact" er en sann, noytral observasjon
+     som IKKE i seg selv er et problem (bevisst config, handteres et annet
+     sted) -- egen dempet grafarge, IKKE advarselsfarge, slik at et rent
+     faktum ikke ser ut som noe som ma fikses. Dokumentert i SKILL.md siden
+     14.07.2026, faktisk implementert her 16.07.2026 (var kun en samlet
+     telling for tidligere -- "gap-badge" -- uten skille mellom typene). */
+  .ai-gap{display:block;font-size:8px;line-height:1.4;padding:2px 6px;border-radius:4px;
+    margin-top:3px;background:rgba(196,122,74,.12);color:#8a4a24;border-left:2px solid var(--orphan)}
+  .ai-gap.fact{background:rgba(0,0,0,.045);color:var(--muted);border-left-color:var(--line)}
+  .dup-badge{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;border-radius:99px;
+    background:rgba(196,154,52,.18);color:#8a5a1f}
+  .stub-badge{display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;border-radius:99px;
+    background:rgba(201,58,58,.14);color:var(--stub);margin-right:4px}
+  .node.has-stub{border-color:var(--stub)}
+  .node.ghost{border-style:dashed;border-color:var(--orphan);opacity:.85}
+  .node.ghost .dot{background:var(--orphan)}
+  .node.ghost.planned{border-color:var(--planned)}
+  .node.ghost.planned .dot{background:var(--planned)}
+  /* noder plasseres som <li> ogsa utenfor .tree (i unlinked-grid/
+     unownedMissingGrid, plain <div>-containere) -- uten denne vises en
+     kulepunkt-markor foran hver node der, siden kun .tree li fikk
+     list-style:none fra for. Generell :has()-selektor sa den dekker ALLE
+     containere som matte bruke samme node/ghost-bygger i fremtiden, ikke
+     bare de to som er kjent i dag. */
+  li:has(> .node){list-style:none}
+
+  /* Sammendrag+notater er skjult bak et utvid-tag som standard -- statisk
+     tekst under hvert node ville gjort treet uleselig sa fort en side har
+     mer enn ett notat. Samme chevron-monster som details.how oppe i
+     header-en (▸/▾), bare i node-storrelse. */
+  .node-toggle{margin-top:2px}
+  .node-toggle summary{cursor:pointer;font-size:8px;color:var(--muted);list-style:none;padding:1px 0}
+  .node-toggle summary::-webkit-details-marker{display:none}
+  .node-toggle summary::before{content:"\25B8 ";color:var(--muted)}
+  .node-toggle[open] summary::before{content:"\25BE ";}
+  .node-toggle-body{margin-top:2px}
+
+  .unlinked-grid{display:flex;flex-wrap:wrap;gap:10px 12px;padding:4px}
+
+  /* ---------- DETALJ-LISTE (revisjons-referanse) ---------- */
+  .card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;
+    background:#fff;display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+  .card.orphan{border-left:3px solid var(--orphan)}
+  .card.ok{border-left:3px solid var(--ok)}
+  .route{font-family:var(--mono);font-size:13px;font-weight:600}
+  .file2{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px}
+  .flags{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+  .flag{font-size:10px;padding:2px 7px;border-radius:99px;background:var(--surf);color:var(--muted);
+    border:1px solid var(--line)}
+  .flag.dyn{color:#8a5a1f;border-color:rgba(196,154,52,.3);background:rgba(196,154,52,.08)}
+  .from{font-size:11px;color:var(--muted);text-align:right;max-width:280px}
+  .from b{color:var(--ink);font-weight:600}
+  .redirect-badge{font-size:9px;color:var(--muted);font-style:italic}
+  .depth-badge{font-size:8px;font-weight:700;color:var(--muted);background:var(--surf);
+    border:1px solid var(--line);border-radius:99px;padding:1px 6px;margin-left:6px}
+
+  #err{max-width:1100px;margin:40px auto;padding:20px;background:#fdecec;border-radius:10px;
+    color:#8a2f2f;font-size:14px;display:none}
+
+  /* ---------- REDIRECT-KJEDER/LOOPER ---------- */
+  .redirect-issue{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;
+    background:#fff;border-left:3px solid var(--orphan);font-size:12px;font-family:var(--mono)}
+  .redirect-issue.loop{border-left-color:#c93a3a}
+  .redirect-issue .kind{font-family:var(--font);font-size:10px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--orphan);margin-bottom:4px;display:block}
+  .redirect-issue.loop .kind{color:#c93a3a}
+
+  /* ---------- DUPLIKAT-SAMMENLIGNING ---------- */
+  .dup-card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;
+    background:#fff;border-left:3px solid #8a5a1f}
+  .dup-card .dup-routes{font-family:var(--mono);font-size:13px;font-weight:600;margin-bottom:6px}
+  .dup-card .dup-prefer{font-size:12px;color:#8a5a1f;font-weight:600;margin-bottom:4px}
+  .dup-card .dup-reason{font-size:12px;color:var(--ink);margin-bottom:8px;line-height:1.5}
+  .dup-tradeoffs{display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:11px;color:var(--muted);line-height:1.5}
+  .dup-tradeoffs b{color:var(--ink)}
+
+  /* ---------- LIVE-STATUS + KOLLAPSBAR FORKLARING ---------- */
+  .live-dot{display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--ok);
+    margin-right:5px;animation:live-pulse 2s ease-in-out infinite}
+  @keyframes live-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  details.how{padding:0;background:transparent}
+  details.how summary{cursor:pointer;padding:12px 14px;background:var(--surf);border-radius:8px;
+    font-size:12px;color:var(--muted);list-style:none}
+  details.how summary::-webkit-details-marker{display:none}
+  details.how summary::before{content:"\25B8 ";color:var(--muted)}
+  details.how[open] summary::before{content:"\25BE ";}
+  details.how[open] summary{border-radius:8px 8px 0 0}
+  details.how .how-body{padding:12px 14px;background:var(--surf);border-radius:0 0 8px 8px;
+    margin-top:1px;font-size:12px;color:var(--muted);line-height:1.6}
+  details.how .how-body code{font-family:var(--mono);background:#fff;padding:1px 5px;
+    border-radius:4px;border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Sidekart · Live</h1>
+  <p class="sub">Auto-generert fra de EKTE filene i prosjektet — ikke hånd-tegnet. Viser hva som
+    faktisk finnes og faktisk er lenket akkurat nå, ikke den tiltenkte arkitekturen.</p>
+  <div class="meta-row" id="metaRow"></div>
+  <details class="how">
+    <summary>Hva er dette, og hvordan oppdaterer jeg HELE siden? (les mer)</summary>
+    <div class="how-body">
+      Denne siden henter <code>sitekart-data.json</code> og
+      <code>sitekart-annotations.json</code> på nytt automatisk (poller hvert
+      8. sekund) — ingen manuell reload nødvendig mens du ser på den. For at
+      selve INNHOLDET skal oppdateres etter en ekte endring i sider/lenker
+      må du likevel kjøre <code>node scripts/generate-sitekart.mjs</code> på
+      nytt (skriver <code>public/sitekart-data.json</code> på nytt); pollingen
+      plukker automatisk opp den nye fila neste gang den kjører. Kun interne
+      <code>href</code>-referanser + komponent-imports/route-config telles —
+      eksterne URL-er fanges ikke alltid perfekt, og et prosjekt som både
+      oppretter en router OG har urelaterte objekter med en <code>path</code>-
+      nøkkel andre steder kan i sjeldne tilfeller få en falsk "rute"; se det
+      som en sterk indikasjon, ikke en garanti.
+      <br><br>
+      Hver boks viser en <b>klikk-dybde</b>-merkelapp (f.eks. "2 klikk") —
+      antall klikk fra forsiden (<code>/</code>) til siden, regnet via faktiske
+      lenker (omdirigeringer telles ikke som et klikk en bruker selv gjør).
+      Under duplikat-sammenligningene finner du en egen seksjon for
+      <b>omdirigerings-kjeder og -looper</b> — kjeder på 2+ omdirigeringer på
+      rad (A→B→C) eller looper (A→B→A) blir flagget her; en helt vanlig
+      enkelt-omdirigering (A→B) er normalt og vises ikke.
+      <br><br>
+      Siden bygger kun treet/forhåndsvisningene på nytt når dataen faktisk
+      har endret seg siden forrige poll — tidsstempelet ("Live · sjekket …")
+      tikker videre hvert 8. sekund uansett, men iframene lastes ikke på nytt
+      med mindre noe reelt har endret seg.
+    </div>
+  </details>
+</header>
+<main>
+  <section>
+    <h2>Treet — hver ekte side er en liten firkant, koblet slik den faktisk er lenket</h2>
+    <div class="tree-wrap"><ul class="tree" id="treeRoot"></ul></div>
+  </section>
+  <section>
+    <h2>Ikke koblet inn i treet <span class="count orphan" id="orphanCount2">0</span></h2>
+    <div class="unlinked-grid" id="unlinkedGrid"></div>
+  </section>
+  <section>
+    <h2>Manglende sider uten tydelig plassering <span class="count orphan" id="unownedMissingCount">0</span></h2>
+    <div class="unlinked-grid" id="unownedMissingGrid"></div>
+  </section>
+  <section>
+    <h2>Duplikat-sammenligninger <span class="count orphan" id="dupCount">0</span></h2>
+    <div id="dupList"></div>
+  </section>
+  <section>
+    <h2>Omdirigerings-kjeder og -looper <span class="count orphan" id="redirectIssueCount">0</span></h2>
+    <div id="redirectIssueList"></div>
+  </section>
+  <section>
+    <h2>Detaljer — kildefil per lenke <span class="count ok" id="okCount">0</span>
+      <span class="count orphan" id="orphanCount">0</span></h2>
+    <div id="linkedList"></div>
+    <div id="orphanList"></div>
+  </section>
+</main>
+<div id="err"></div>
+
+<script>
+function esc(str) {
+  const div = document.createElement("div");
+  div.textContent = str == null ? "" : String(str);
+  return div.innerHTML;
+}
+
+// Live-polling: hent begge JSON-filene pa nytt med jevne mellomrom sa siden
+// aldri trenger en manuell reload mens du jobber. inFlight-vakten hindrer
+// overlappende kjoringer hvis en henting skulle ta lenger enn intervallet.
+const POLL_INTERVAL_MS = 8000;
+let inFlight = false;
+// lastPayloadKey lar oss hoppe over full gjenoppbygging (inkl. ALLE iframe-
+// forhandsvisninger) nar dataen ikke faktisk har endret seg siden forrige
+// poll -- uten denne ble hvert eneste iframe destruert og gjenskapt hvert
+// 8. sekund uansett, ogsa nar ingenting hadde endret seg (bevist i praksis
+// under /best-losning-revisjonen 10.07.2026: konstant reload-flimmer i
+// forhandsvisningene selv med en helt statisk kilde).
+let lastPayloadKey = null;
+
+async function load() {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    await render();
+  } finally {
+    inFlight = false;
+  }
+}
+
+function updateMetaRow(data, checkedAt, missingTotal, stubTotal) {
+  const meta = document.getElementById("metaRow");
+  const generated = new Date(data.generatedAt);
+  meta.innerHTML =
+    "<span><b>" + data.totalRoutes + "</b> ruter totalt</span>" +
+    (missingTotal ? "<span><b>" + missingTotal + "</b> manglende/planlagte sider</span>" : "") +
+    (stubTotal ? "<span><b>" + stubTotal + "</b> uferdige sider</span>" : "") +
+    "<span>Generert " + generated.toLocaleString("no-NO") + "</span>" +
+    '<span><span class="live-dot"></span>Live \u00b7 sjekket ' +
+    checkedAt.toLocaleTimeString("no-NO") + "</span>";
+  document.getElementById("okCount").textContent = data.linkedCount;
+  document.getElementById("orphanCount").textContent = data.orphanedCount;
+  document.getElementById("orphanCount2").textContent = data.orphanedCount;
+}
+
+async function render() {
+  let data;
+  try {
+    const res = await fetch("./sitekart-data.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    data = await res.json();
+  } catch (e) {
+    document.getElementById("err").style.display = "block";
+    document.getElementById("err").textContent =
+      "Fant ikke sitekart-data.json — kjør `node scripts/generate-sitekart.mjs` først, deretter last denne siden på nytt. (" + e.message + ")";
+    return;
+  }
+  document.getElementById("err").style.display = "none";
+
+  let annotations = { pages: [], duplicates: [], missingSuggestions: [] };
+  try {
+    const annRes = await fetch("./sitekart-annotations.json", { cache: "no-store" });
+    if (annRes.ok) annotations = await annRes.json();
+  } catch {
+    /* annotations er valgfritt -- struktur-laget vises uansett */
+  }
+
+  // Tidsstempelet skal alltid tikke videre sa "Live"-badgen viser at
+  // pollingen faktisk kjorer -- men selve treet/gridene (med iframene)
+  // gjenoppbygges KUN nar dataen faktisk er endret siden forrige poll.
+  const checkedAt = new Date();
+  const stubTotal = annotations.pages.filter(
+    (p) => (p.gaps || []).some((g) => g.type === "stub")
+  ).length;
+  updateMetaRow(data, checkedAt, (data.missingPages || []).length, stubTotal);
+
+  // generatedAt utelates bevisst fra diff-nokkelen -- den settes til et nytt
+  // tidsstempel HVER gang generatoren kjores, selv om null ruter/lenker
+  // faktisk endret seg. Uten denne utelatelsen ville en ren re-kjoring av
+  // node scripts/generate-sitekart.mjs (f.eks. fra en fil-watcher/cron)
+  // fortsatt trigget full iframe-rebuild pa neste poll -- den opprinnelige
+  // "iframe-flimmer"-bugen ville delvis overlevd fiksen. Bevist i praksis
+  // 10.07.2026 under full-systemrevisjon: samme feil fantes allerede i
+  // Monterosso sin egen (mer modne) raw-tekst-diffing fra for (nedarvet
+  // hit, ikke introdusert av selve payload-key-fiksen).
+  const { generatedAt, ...dataForDiff } = data;
+  const payloadKey = JSON.stringify({ data: dataForDiff, annotations });
+  if (payloadKey === lastPayloadKey) return;
+  lastPayloadKey = payloadKey;
+
+  // Fjern alt fra forrige rendring for polling ikke skal duplisere noder.
+  ["treeRoot", "unlinkedGrid", "unownedMissingGrid", "dupList", "linkedList", "orphanList", "redirectIssueList"]
+    .forEach((id) => { document.getElementById(id).innerHTML = ""; });
+
+  // ---------- 1) bygg treet ----------
+  // "linkedFrom[].from" er en FIL (f.eks. "app/gateway/Gateway.js"), ikke en
+  // rute — finn hvilken rute som EIER den fila (samme mappe som rutens egen
+  // page.js) for å kunne koble forelder→barn.
+  function ownerRouteOf(fromFile) {
+    if (fromFile.startsWith("redirect:")) return null; // ekstern kilde, ikke en side
+    const dir = fromFile.split("/").slice(0, -1).join("/");
+    return data.routes.find((r) => r.file.split("/").slice(0, -1).join("/") === dir);
+  }
+
+  // EKTE ruters foreldre kommer FERDIG BEREGNET fra data.routes[].parentRoute
+  // (satt av computeClickDepths i generate-sitekart.mjs -- samme BFS som
+  // avgjor clickDepth). IKKE rekomputer eierskap her via ownerRouteOf: den
+  // funksjonen kjenner kun det aller forste, katalog-baserte steget -- uten
+  // renders-alias/sti-hierarki/delt-skall-fallbackene fra server-siden
+  // viste denne rekomputasjonen til 17.07.2026 stille disse rutene som
+  // "ikke koblet inn" i treet lenge etter at clickDepth-tallet var korrekt
+  // reparert (to kopier av samme avgjorelse, kun én oppdatert). ownerRouteOf
+  // brukes fortsatt lenger ned for MANGLENDE sider (ghost-noder) -- de er
+  // ikke ekte filer og har derfor ingen parentRoute fra serveren.
+  const byRoute = new Map(data.routes.map((r) => [r.route, { ...r, children: [] }]));
+  const hasParent = new Set();
+  for (const r of data.routes) {
+    if (r.parentRoute && byRoute.has(r.parentRoute) && r.parentRoute !== r.route) {
+      byRoute.get(r.parentRoute).children.push(byRoute.get(r.route));
+      hasParent.add(r.route);
+    }
+  }
+
+  // Dynamiske segmenter ([slug] osv.) kan ikke lastes bokstavelig — bytt inn
+  // et EKTE, kjent eksempel fra sidekart.config.json sin previewOverrides
+  // (skrevet av loadConfig() i lag 1, prosjekt-spesifikt, IKKE hardkodet
+  // her). Ukjente dynamiske ruter får en tydelig "ingen forhåndsvisning"-
+  // boks i stedet for å gjette en URL som kan 404e.
+  const PREVIEW_OVERRIDE = data.previewOverrides || {};
+  // baseUrl (fra samme config, lag 1) er nødvendig når denne HTML-siden
+  // serveres fra en ANNEN origin enn selve dev-serveren/den deployede appen
+  // (f.eks. en enkel statisk fil-server på en annen port) — da må
+  // iframe-src peke eksplisitt dit i stedet for en relativ sti som ville
+  // truffet feil origin.
+  function previewUrl(route) {
+    const target = route.includes("[") ? PREVIEW_OVERRIDE[route] || null : route;
+    if (!target) return null;
+    return data.baseUrl ? data.baseUrl.replace(/\/$/, "") + target : target;
+  }
+
+  function thumbEl(n) {
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+    const url = previewUrl(n.route);
+    if (url) {
+      const iframe = document.createElement("iframe");
+      iframe.loading = "lazy";
+      iframe.src = url;
+      iframe.title = n.route;
+      thumb.appendChild(iframe);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "no-preview";
+      ph.textContent = "Dynamisk rute — ingen kjent eksempel-URL";
+      thumb.appendChild(ph);
+    }
+    return thumb;
+  }
+
+  function appendAnnotationInfo(box, file) {
+    const ann = annotations.pages.find((p) => p.file === file);
+    if (!ann) return;
+    const gaps = ann.gaps || [];
+    const stubCount = gaps.filter((g) => g.type === "stub").length;
+    // Stub er et side-NIVA-fullstendighetssignal (egen badge, se over) --
+    // "gap"/"fact" er enkelt-observasjoner om en ELLERS ferdig side, og
+    // rendres derfor hver for seg med .ai-gap/.ai-gap.fact (ikke bundet inn
+    // i samme liste som stub-signalet).
+    const observations = gaps.filter((g) => g.type !== "stub");
+    if (stubCount > 0) box.classList.add("has-stub");
+    const info = document.createElement("div");
+    info.className = "node-info";
+    const badges =
+      (stubCount ? '<span class="stub-badge">🚧 uferdig</span>' : "") +
+      (ann.possibleDuplicateOf ? '<span class="dup-badge">⚠ ligner ' + esc(ann.possibleDuplicateOf) + "</span>" : "");
+    // Sammendrag + notater ville gjort treet ulesbart hvis alt sto statisk
+    // synlig for hver node samtidig -- lagt bak <details> som kollapser til
+    // en kort teaser, apnes per node ved klikk (Mandy 16.07.2026: "man ma
+    // kunne utvide for a se tekst under hvert bilde i stedet for at det er
+    // der statisk").
+    const hasDetail = !!ann.summary || observations.length > 0;
+    const teaser = observations.length
+      ? observations.length + (observations.length === 1 ? " notat" : " notater")
+      : "sammendrag";
+    const body =
+      (ann.summary ? '<div class="summary">' + esc(ann.summary) + "</div>" : "") +
+      observations
+        .map((g) => '<div class="ai-gap' + (g.type === "fact" ? " fact" : "") + '">' + esc(g.text) + "</div>")
+        .join("");
+    info.innerHTML =
+      badges +
+      (hasDetail
+        ? '<details class="node-toggle"><summary>' + teaser + '</summary>' +
+          '<div class="node-toggle-body">' + body + "</div></details>"
+        : "");
+    box.appendChild(info);
+  }
+
+  // missing.linkedFrom kan inneholde "redirect:/kilde"-pseudo-stier (se
+  // findRedirects i generate-sitekart.mjs) -- vis disse lesbart ("301 fra
+  // X") i stedet for a lekke det interne prefikset ratt til brukeren.
+  // Samme fiks-klasse som redirect:-filtreringen i annotate-workflow.md,
+  // men i visningslaget her -- fanget under full-systemrevisjon 10.07.2026.
+  function formatLinkedFromSource(source) {
+    return source.startsWith("redirect:")
+      ? "301 fra " + source.replace(/^redirect:/, "")
+      : source;
+  }
+
+  function ghostNodeEl(missing) {
+    const li = document.createElement("li");
+    const box = document.createElement("div");
+    box.className = "node ghost" + (missing.planned ? " planned" : "");
+    const head = document.createElement("div");
+    head.className = "node-head";
+    // planned:true (fra sidekart.config.json sin plannedPages) har ALDRI en
+    // linkedFrom -- ingen kode lenker dit enn\u00e5, det er en ren fremtidsplan,
+    // ikke en ekte brutt lenke. Vis derfor et eget "planlagt"-merke + valgfri
+    // note i stedet for "mangler -- lenket fra ..." (som ville vist en tom
+    // streng for disse).
+    const label = missing.planned
+      ? "planlagt" + (missing.note ? " \u2014 " + esc(missing.note) : "")
+      : "mangler \u2014 lenket fra " + esc(missing.linkedFrom.map(formatLinkedFromSource).join(", "));
+    head.innerHTML =
+      '<span class="dot"></span><span>' + esc(missing.target) +
+      '<span class="file">' + label + "</span></span>";
+    box.appendChild(head);
+    const suggestion = annotations.missingSuggestions.find((s) => s.target === missing.target);
+    if (suggestion) {
+      const info = document.createElement("div");
+      info.className = "node-info";
+      info.innerHTML =
+        '<div class="summary"><b>Forslag:</b> ' + esc(suggestion.suggestedPurpose) + "</div>" +
+        '<div class="summary">' + esc(suggestion.suggestedContent) + "</div>";
+      box.appendChild(info);
+    }
+    li.appendChild(box);
+    return li;
+  }
+
+  function depthBadge(n) {
+    return (n && typeof n.clickDepth === "number")
+      ? '<span class="depth-badge">' + n.clickDepth + " klikk</span>"
+      : "";
+  }
+
+  // Rutenavnet skal kunne apnes direkte (Mandy 16.07.2026: "man ma kunne
+  // trykke pa hver rute og den apnes") -- samme URL-utledning som thumbEl()
+  // allerede bruker (baseUrl/previewOverrides for dynamiske segmenter).
+  // Bygget via DOM-egenskap (link.href = url), IKKE streng-konkatenering inn
+  // i innerHTML -- unngar enhver anforselstegn-escaping-risiko helt, samme
+  // forsiktighet som iframe.src = url et annet sted i denne fila. Delt
+  // mellom nodeEl() og "ikke koblet"-gridet (var duplisert kode begge steder
+  // for denne endringen -- samlet na, samme prinsipp som findRendersAliasTarget
+  // i generate-sitekart.mjs: én endring propagerer automatisk begge steder).
+  function buildNodeHead(n) {
+    const head = document.createElement("div");
+    head.className = "node-head";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    head.appendChild(dot);
+    const label = document.createElement("span");
+    const url = previewUrl(n.route);
+    if (url) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.className = "route-link";
+      link.textContent = n.route;
+      label.appendChild(link);
+    } else {
+      label.appendChild(document.createTextNode(n.route));
+    }
+    label.insertAdjacentHTML("beforeend", depthBadge(n));
+    const fileSpan = document.createElement("span");
+    fileSpan.className = "file";
+    fileSpan.textContent = n.file;
+    label.appendChild(fileSpan);
+    head.appendChild(label);
+    return head;
+  }
+
+  function nodeEl(n) {
+    if (n.__ghost) return ghostNodeEl(n);
+    const li = document.createElement("li");
+    const box = document.createElement("div");
+    box.className = "node " + n.status;
+    const head = buildNodeHead(n);
+    box.appendChild(head);
+    box.appendChild(thumbEl(n));
+    appendAnnotationInfo(box, n.file);
+    li.appendChild(box);
+    if (n.children.length) {
+      const ul = document.createElement("ul");
+      n.children.forEach((c) => ul.appendChild(nodeEl(c)));
+      li.appendChild(ul);
+    }
+    return li;
+  }
+
+  const unownedMissing = [];
+  for (const missing of data.missingPages || []) {
+    const owner = missing.linkedFrom.length ? ownerRouteOf(missing.linkedFrom[0]) : null;
+    const ghost = {
+      __ghost: true,
+      target: missing.target,
+      linkedFrom: missing.linkedFrom,
+      planned: missing.planned || false,
+      note: missing.note || null,
+      children: [],
+    };
+    if (owner && byRoute.has(owner.route)) {
+      byRoute.get(owner.route).children.push(ghost);
+    } else {
+      unownedMissing.push(ghost);
+    }
+  }
+
+  const root = byRoute.get("/");
+  document.getElementById("treeRoot").appendChild(nodeEl(root));
+
+  document.getElementById("unownedMissingCount").textContent = unownedMissing.length;
+  const unownedGrid = document.getElementById("unownedMissingGrid");
+  unownedMissing.forEach((g) => unownedGrid.appendChild(ghostNodeEl(g)));
+
+  // ---------- duplikat-sammenligninger (Workflow-scriptets 2. fase) ----------
+  const duplicates = annotations.duplicates || [];
+  document.getElementById("dupCount").textContent = duplicates.length;
+  const dupList = document.getElementById("dupList");
+  for (const dup of duplicates) {
+    const card = document.createElement("div");
+    card.className = "dup-card";
+    const [routeA, routeB] = dup.routes || [];
+    card.innerHTML =
+      '<div class="dup-routes">' + esc(routeA) + " vs " + esc(routeB) + "</div>" +
+      '<div class="dup-prefer">Foretrekker: ' + esc(dup.prefer) + "</div>" +
+      '<div class="dup-reason">' + esc(dup.reason) + "</div>" +
+      '<div class="dup-tradeoffs">' +
+      "<div><b>" + esc(routeA) + ":</b> " + esc(dup.tradeoffs && dup.tradeoffs.a) + "</div>" +
+      "<div><b>" + esc(routeB) + ":</b> " + esc(dup.tradeoffs && dup.tradeoffs.b) + "</div>" +
+      "</div>";
+    dupList.appendChild(card);
+  }
+
+  // ---------- omdirigerings-kjeder/-looper (lag 1, generate-sitekart.mjs) ----------
+  const redirectChains = data.redirectChains || [];
+  const redirectLoops = data.redirectLoops || [];
+  document.getElementById("redirectIssueCount").textContent = redirectChains.length + redirectLoops.length;
+  const redirectIssueList = document.getElementById("redirectIssueList");
+  for (const loop of redirectLoops) {
+    const card = document.createElement("div");
+    card.className = "redirect-issue loop";
+    card.innerHTML = '<span class="kind">Loop</span>' + loop.path.map(esc).join(" \u2192 ");
+    redirectIssueList.appendChild(card);
+  }
+  for (const chain of redirectChains) {
+    const card = document.createElement("div");
+    card.className = "redirect-issue";
+    card.innerHTML =
+      '<span class="kind">Kjede (' + (chain.path.length - 1) + " hopp)</span>" + chain.path.map(esc).join(" \u2192 ");
+    redirectIssueList.appendChild(card);
+  }
+
+  // ---------- 2) ikke koblet inn i treet (verken rot eller nådd via en gren) ----------
+  const grid = document.getElementById("unlinkedGrid");
+  for (const r of data.routes) {
+    if (r.route === "/" || hasParent.has(r.route)) continue;
+    const box = document.createElement("div");
+    box.className = "node orphaned";
+    const head = buildNodeHead(r);
+    box.appendChild(head);
+    box.appendChild(thumbEl(r));
+    appendAnnotationInfo(box, r.file);
+    grid.appendChild(box);
+    // en foreldrelos rute kan selv vaere eier av en ghost-node (manglende side
+    // lenket derfra) -- den vil aldri nas via treeRoot-rekursjonen siden roten
+    // selv ikke er en del av treet, sa flat den ut i samme rutenett i stedet
+    // for a miste den stille.
+    const node = byRoute.get(r.route);
+    if (node && node.children.length) {
+      node.children.forEach((c) => grid.appendChild(nodeEl(c)));
+    }
+  }
+
+  // ---------- 3) detalj-liste (uendret fra forrige versjon, som referanse) ----------
+  const linkedList = document.getElementById("linkedList");
+  const orphanList = document.getElementById("orphanList");
+  for (const r of data.routes) {
+    if (r.status === "root") continue;
+    const card = document.createElement("div");
+    card.className = "card " + (r.status === "orphaned" ? "orphan" : "ok");
+    const left = document.createElement("div");
+    left.innerHTML =
+      '<div class="route">' + esc(r.route) + "</div>" +
+      '<div class="file2">' + esc(r.file) + "</div>" +
+      '<div class="flags">' +
+      (r.dynamic ? '<span class="flag dyn">force-dynamic</span>' : "") +
+      (r.renders ? '<span class="flag">rendrer ' + esc(r.renders) + "</span>" : "") +
+      "</div>";
+    card.appendChild(left);
+    if (r.status === "linked") {
+      const right = document.createElement("div");
+      right.className = "from";
+      right.innerHTML = r.linkedFrom
+        .map((l) => {
+          if (l.from.startsWith("redirect:")) {
+            return '<span class="redirect-badge">301 fra ' + esc(l.from.replace("redirect:", "")) + "</span>";
+          }
+          if (l.renders) {
+            return '<span class="redirect-badge">' + esc(l.from) + " rendrer denne direkte</span>";
+          }
+          return "<b>" + esc(l.from) + "</b>";
+        })
+        .join("<br>");
+      card.appendChild(right);
+      linkedList.appendChild(card);
+    } else {
+      orphanList.appendChild(card);
+    }
+  }
+}
+load();
+setInterval(load, POLL_INTERVAL_MS);
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+{
+  "name": "vite-react-router-navitem-array-fixture",
+  "dependencies": { "vite": "^5.0.0", "react-router-dom": "^6.20.0" }
+}

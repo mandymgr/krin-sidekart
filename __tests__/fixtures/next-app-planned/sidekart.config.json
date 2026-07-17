@@ -1,0 +1,6 @@
+{
+  "plannedPages": [
+    { "route": "/pricing", "note": "Kommer i Q3 - prisliste" },
+    { "route": "/", "note": "Skal aldri dukke opp - / finnes allerede" }
+  ]
+}

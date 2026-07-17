@@ -1,0 +1,4 @@
+{
+  "name": "next-redirect-quotes-fixture",
+  "dependencies": { "next": "^14.0.0" }
+}
