@@ -523,6 +523,24 @@ function findRendersAliasTarget(route, routes) {
   );
 }
 
+// RETTET 17.07.2026 (npm-pakke-migreringen, portet FRA cinque-terre sin
+// egen sitekart-core.mjs -- dens 13.07.2026-audit fant dette FØR denne
+// pakken fantes, og migreringen ville stille mistet fiksen uten denne
+// portingen). Uten dette filteret ble ETHVERT umatchet href-mål rapportert
+// som "manglende side" -- bevist mot cinque-terre: asset-stier
+// (/backgrounds/x.webp, /discover/rss.xml), API-ruter (/api/...) og
+// trunkerte prefikser av en rute som FAKTISK finnes ett hakk dypere
+// (href={`/s/${slug}`} sitt statiske "/s"-fragment, mens "/s/[slug]" er en
+// ekte rute) dukket alle opp som falske "manglende sider".
+function looksLikeRealPageTarget(target, routes) {
+  if (target.startsWith("/api/")) return false;
+  const lastSegment = target.split("/").pop() || "";
+  if (lastSegment.includes(".")) return false;
+  const isTruncatedPrefix = routes.some((r) => r.route.startsWith(target + "/"));
+  if (isTruncatedPrefix) return false;
+  return true;
+}
+
 export function matchEdgesToRoutes(routes, edges) {
   const enriched = routes.map((r) => ({ ...r, linkedFrom: [] }));
   const missingMap = new Map();
@@ -533,7 +551,7 @@ export function matchEdgesToRoutes(routes, edges) {
       if (!hit.linkedFrom.some((l) => l.from === edge.from)) {
         hit.linkedFrom.push({ from: edge.from, redirect: !!edge.redirect });
       }
-    } else {
+    } else if (looksLikeRealPageTarget(edge.to, enriched)) {
       if (!missingMap.has(edge.to)) missingMap.set(edge.to, new Set());
       missingMap.get(edge.to).add(edge.from);
     }

@@ -195,6 +195,21 @@ test("matchEdgesToRoutes: renders-alias gjor en importert rute til linket, ikke 
   assert.deepEqual(gateway.linkedFrom, [{ from: "app/page.js", renders: true }]);
 });
 
+test("matchEdgesToRoutes: asset-stier, api-ruter og trunkerte prefikser blir IKKE rapportert som manglende sider (portet fra cinque-terre 17.07.2026)", () => {
+  const routes = [
+    { route: "/", file: "app/page.js", dynamic: false, renders: null },
+    { route: "/s/[slug]", file: "app/s/[slug]/page.js", dynamic: false, renders: null },
+  ];
+  const edges = [
+    { from: "app/page.js", to: "/backgrounds/sunset.webp" }, // asset -- har filendelse
+    { from: "app/page.js", to: "/api/health" }, // api-rute -- ikke en side
+    { from: "app/page.js", to: "/s" }, // trunkert prefiks av /s/[slug]
+    { from: "app/page.js", to: "/discover" }, // ekte manglende side -- ingen av unntakene
+  ];
+  const { missingPages } = matchEdgesToRoutes(routes, edges);
+  assert.deepEqual(missingPages, [{ target: "/discover", linkedFrom: ["app/page.js"] }]);
+});
+
 test("routeMatchesTarget: escapes regex-metacharacter (.html), blokkerer falske treff", () => {
   // Routes with .html should NOT match unrelated targets like /aboutXhtml
   const routes = [

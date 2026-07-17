@@ -1,6 +1,6 @@
 {
   "name": "krin-sidekart",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Delt sidekart-motor (rutekartlegging, lenkededeteksjon, klikkdybde, visuell HTML) for React/Next.js-prosjekter. Publisert 17.07.2026 som egen pakke for å eliminere kopier-og-drift-check-mønsteret på tvers av 01_KRIN_AI, cinque-terre og baatchat/web.",
   "type": "module",
   "main": "./src/index.mjs",
