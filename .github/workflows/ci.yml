@@ -1,0 +1,74 @@
+name: CI — tester
+
+# Opprettet 17.08.2026, samme natt som testsuiten ble oppdaget DØD.
+#
+# `npm test` var `node --test __tests__/`. Det fungerte i eldre Node, men
+# Node 26 tolker stien som en MODUL å laste i stedet for en katalog å skanne,
+# og feilet med MODULE_NOT_FOUND. 0 av 59 tester hadde kjørt siden Node ble
+# oppgradert — uten at noe varslet, fordi ingenting kjørte dem automatisk.
+# Rettet i commit c42e2ca til `node --test "__tests__/*.test.mjs"`.
+#
+# Denne fila er den andre halvdelen av den fiksen: et reparert test-script som
+# ingen kjører er fortsatt ingen vakt.
+#
+# Hvorfor det haster mer her enn i et vanlig repo: fire prosjekter konsumerer
+# denne pakken som `github:mandymgr/krin-sidekart#v1.0.1` — frontend/,
+# 01_KRIN_AI, cinque-terre og baatchat/web. En regresjon her sprer seg til alle
+# fire, og de henter fra en TAG, så feilen ville blitt låst inne i det øyeblikket
+# noen tagget en ny versjon.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # 24 er husets standard (satt i 01_KRIN_AI 25.07.2026 fordi GitHub melder
+  # Node 20 som deprecated). Merk at feilen denne fila vokter mot oppsto nettopp
+  # ved en Node-oppgradering — så versjonen her er ikke en detalj.
+  NODE_VERSION: '24'
+
+jobs:
+  test:
+    name: Tester
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Ingen `npm ci`: pakken har ingen runtime-avhengigheter, og testene
+      # kjører på Nodes egen innebygde test-runner. Et install-steg her ville
+      # bare vært seremoni.
+
+      - name: Kjør tester
+        run: npm test
+
+      # Fanger nøyaktig regresjonen som gjorde suiten død: at kommandoen kjører
+      # uten å finne noen tester. `npm test` alene ville da gitt exit 0 og sett
+      # grønt ut. Vi krever derfor et TALL, ikke bare en exit-kode — samme
+      # prinsipp som at «5 successful tasks» i turbo kan bety null tester.
+      #
+      # Første utkast av dette steget lette etter `^# pass N`. Det er FEIL format
+      # (node --test skriver `ℹ pass N`), så variabelen ble alltid tom og steget
+      # ville alltid truffet `exit 1` — altså en CI som er rød fra dag én, som er
+      # nøyaktig feilen denne fila finnes for å unngå. Fanget ved å måle mot ekte
+      # output i stedet for å stole på mønsteret. Derfor:
+      #   · ANSI-farger strippes først — de er grunnen til at ankrede mønstre bommer
+      #   · mønsteret er ankret på linjeslutt, så et testnavn som inneholder
+      #     «pass 3» ikke kan forveksles med oppsummeringen
+      - name: Krev at testene faktisk KJØRTE
+        run: |
+          npm test 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g' > /tmp/testout.txt
+          ANT=$(grep -oE 'pass [0-9]+$' /tmp/testout.txt | grep -oE '[0-9]+' | tail -1)
+          echo "tester som passerte: ${ANT:-0}"
+          if [ -z "$ANT" ] || [ "$ANT" -lt 1 ]; then
+            echo "::error::0 tester kjørte — suiten er død igjen, ikke grønn."
+            tail -20 /tmp/testout.txt
+            exit 1
+          fi
