@@ -22,5 +22,14 @@
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^17.3.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "eslint"
+    ],
+    "*.{ts,tsx}": [
+      "tsc --noEmit"
+    ]
   }
 }
