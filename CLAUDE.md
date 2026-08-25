@@ -33,3 +33,7 @@ for f in .nvmrc .editorconfig .prettierrc commitlint.config.mjs .github/CODEOWNE
 done
 ```
 
+
+## Master-huskefil
+
+Start her for nye sesjoner: `~/Desktop/REPO-HELPER-KIT/MASTER-HUSKEFIL.md`
