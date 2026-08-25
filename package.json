@@ -15,7 +15,8 @@
     "bin"
   ],
   "scripts": {
-    "test": "node --test \"__tests__/*.test.mjs\""
+    "test": "node --test \"__tests__/*.test.mjs\"",
+    "doctor": "node scripts/doctor.mjs"
   },
   "license": "UNLICENSED",
   "private": true,
